@@ -1,0 +1,3 @@
+
+include ebs/linuxnode/gui/kivy/modapi/images/no-internet.png
+include ebs/linuxnode/gui/kivy/modapi/images/no-server.png

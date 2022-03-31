@@ -21,6 +21,13 @@ setuptools.setup(
     packages=setuptools.find_packages(),
     install_requires=_requires,
 
+    package_dir={'ebs.linuxnode.gui.kivy.modapi': 'ebs/linuxnode/gui/kivy/modapi',
+                 'ebs.linuxnode.modapi': 'ebs/linuxnode/modapi'},
+
+    package_data={'ebs.linuxnode.gui.kivy.modapi': ['images/background.png',
+                                                    'images/no-internet.png',
+                                                    'images/no-server.png']},
+
     setup_requires=['setuptools_scm'],
     use_scm_version=True,
 
