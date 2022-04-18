@@ -3,7 +3,7 @@ import setuptools
 _requires = [
     'six',
     'setuptools-scm',
-    'ebs-linuxnode-core>=2.0',
+    'ebs-linuxnode-core>=2.1',
     'pqueue',
 ]
 
