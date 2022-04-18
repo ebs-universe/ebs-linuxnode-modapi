@@ -1,3 +1,3 @@
 
 
-from .modapi import ModularApiEngineManagerGuiMixin
+from .mixin import ModularApiEngineManagerGuiMixin
