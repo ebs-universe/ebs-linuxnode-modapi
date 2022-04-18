@@ -59,7 +59,7 @@ class ModularApiEngineManagerGuiMixin(BaseIoTNodeGui):
     @property
     def modapi_internet_indicator(self):
         if not self._api_internet_indicator:
-            _root = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir))
+            _root = os.path.abspath(os.path.join(os.path.dirname(__file__)))
             _source = os.path.join(_root, 'images', 'no-internet.png')
             self._api_internet_indicator = BleedImage(
                 source=_source, pos_hint={'left': 1},
@@ -80,7 +80,7 @@ class ModularApiEngineManagerGuiMixin(BaseIoTNodeGui):
 
     def modapi_connection_indicator(self, prefix):
         if prefix not in self._api_connection_indicators.keys():
-            _root = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir))
+            _root = os.path.abspath(os.path.join(os.path.dirname(__file__)))
             source = os.path.join(_root, 'images', 'no-server.png')
             indicator = ColorBoxLayout(
                 pos_hint={'left': 1}, orientation='vertical', padding=(0, 0, 0, 5),
