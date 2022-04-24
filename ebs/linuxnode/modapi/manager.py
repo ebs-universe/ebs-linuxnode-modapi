@@ -1,9 +1,10 @@
 
 
 from ebs.linuxnode.core.basenode import BaseIoTNode
+from ebs.linuxnode.sysinfo import SysinfoMixin
 
 
-class ModularApiEngineManagerMixin(BaseIoTNode):
+class ModularApiEngineManagerMixin(SysinfoMixin, BaseIoTNode):
     def __init__(self, *args, **kwargs):
         super(ModularApiEngineManagerMixin, self).__init__(*args, **kwargs)
         self._api_engines = []
