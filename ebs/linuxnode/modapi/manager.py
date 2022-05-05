@@ -33,7 +33,7 @@ class ModularApiEngineManagerMixin(SysinfoMixin, BaseIoTNode):
 
     def start(self):
         super(ModularApiEngineManagerMixin, self).start()
-        self.modapi_activate()
+        self.reactor.callLater(2, self.modapi_activate)
 
     def stop(self):
         self.modapi_stop()
