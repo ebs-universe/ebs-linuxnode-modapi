@@ -4,7 +4,7 @@ _requires = [
     'six',
     'setuptools-scm',
     'ebs-linuxnode-core>=3.0.3',
-    'ebs-linuxnode-sysinfo>=3.0.0',
+    'ebs-linuxnode-sysinfo>=3.1.0',
     'pqueue',
 ]
 
