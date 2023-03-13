@@ -8,14 +8,20 @@ from ebs.linuxnode.core.http import HTTPError
 from .primitives import ApiPersistentActionQueue
 
 
+class ServerReportsNotReady(Exception):
+    pass
+
+
 class ModularApiEngineBase(object):
     _prefix = ""
     _api_probe = None
+    _api_announce = None
     _api_tasks = []
     _api_reconnect_frequency = 30
 
-    def __init__(self, actual):
+    def __init__(self, actual, config=None):
         self._log = None
+        self._config = config
         self._actual = actual
         self._api_reconnect_task = None
         self._api_engine_active = False
@@ -37,6 +43,13 @@ class ModularApiEngineBase(object):
         if not self._log:
             self._log = logger.Logger(namespace="modapi.{0}".format(self._prefix), source=self)
         return self._log
+
+    @property
+    def config(self):
+        if self._config:
+            return self._config
+        else:
+            return self._actual.config
 
     """ Status Indicators """
     def modapi_signal_internet_link(self, value, prefix):
@@ -93,7 +106,21 @@ class ModularApiEngineBase(object):
     def api_engine_activate(self):
         self.log.debug("Attempting to activate {0} API engine.".format(self._prefix))
 
-        d = getattr(self, self._api_probe)()
+        def _enter_reconnection_cycle(failure):
+            self.log.error("Can't connect to {0} API endpoint".format(self._prefix))
+            self.log.failure("Connection Failure : ", failure=failure)
+            self.api_endpoint_connected = False
+            if not self.api_reconnect_task.running:
+                self.api_engine_reconnect()
+            return failure
+
+        if self._api_announce:
+            d = getattr(self, self._api_announce)()
+            d.addErrback(_enter_reconnection_cycle)
+        else:
+            d = succeed(True)
+
+        d.addCallback(getattr(self, self._api_probe))
 
         def _made_connection(_):
             self.log.debug("Made connection")
@@ -104,14 +131,6 @@ class ModularApiEngineBase(object):
             self.log.info("Triggering process of {0} API persistent queue".format(self._prefix))
             self._api_queue.process()
             return
-
-        def _enter_reconnection_cycle(failure):
-            self.log.error("Can't connect to {0} API endpoint".format(self._prefix))
-            self.log.failure("Connection Failure : ", failure=failure)
-            self.api_endpoint_connected = False
-            if not self.api_reconnect_task.running:
-                self.api_engine_reconnect()
-            return failure
 
         d.addCallbacks(
             _made_connection,
@@ -165,8 +184,7 @@ class ModularHttpApiEngine(ModularApiEngineBase):
     _api_headers = {}
 
     def __init__(self, actual, config=None):
-        super(ModularHttpApiEngine, self).__init__(actual)
-        self._config = config
+        super(ModularHttpApiEngine, self).__init__(actual, config)
         self._api_token = None
         self._internet_connected = False
         self._internet_link = None
@@ -183,13 +201,6 @@ class ModularHttpApiEngine(ModularApiEngineBase):
     @property
     def network_info(self):
         return self._actual.network_info
-
-    @property
-    def config(self):
-        if self._config:
-            return self._config
-        else:
-            return self._actual.config
 
     """ Network Status Primitives """
 
@@ -268,16 +279,26 @@ class ModularHttpApiEngine(ModularApiEngineBase):
         raise NotImplementedError
 
     """ Core HTTP API Executor """
-    def _api_execute(self, ep, request_builder, response_handler):
+    def _api_execute(self, ep, request_builder, response_handler,
+                     authenticated=True):
         url = "{0}/{1}".format(self.api_url, ep)
-        d = self.api_token
-        d.addCallback(request_builder)
+
+        if authenticated:
+            d = self.api_token
+            d.addCallback(request_builder)
+
+        else:
+            d = succeed(request_builder())
 
         def _get_response(req: dict):
             language = req.pop('_language', 'JSON')
             language = language.upper()
             method = req.pop('_method', 'POST')
             method = method.upper()
+            headers = self._api_headers
+            bearer_token = req.pop('_token', None)
+            if bearer_token:
+                headers[b'Authorization'] = b'Bearer ' + bearer_token.encode('ascii')
             self.log.debug("Executing {language} API {method} Request to {url} \n"
                            "   with content '{content}'\n"
                            "   and headers '{headers}'", 
