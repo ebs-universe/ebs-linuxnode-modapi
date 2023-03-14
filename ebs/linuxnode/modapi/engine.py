@@ -1,5 +1,6 @@
 
 import os
+from copy import copy
 from twisted import logger
 from twisted.internet.defer import succeed
 from twisted.internet.task import LoopingCall
@@ -9,6 +10,18 @@ from .primitives import ApiPersistentActionQueue
 
 
 class ServerReportsNotReady(Exception):
+    pass
+
+
+class ConnectionRequirementsNotReady(Exception):
+    pass
+
+
+class PrimaryAuthenticationFailure(Exception):
+    pass
+
+
+class TokenAuthenticationFailure(Exception):
     pass
 
 
@@ -183,6 +196,9 @@ class ModularHttpApiEngine(ModularApiEngineBase):
     _api_baseurl = ''
     _api_headers = {}
 
+    _auth_url = ''
+    _auth_headers = {}
+
     def __init__(self, actual, config=None):
         super(ModularHttpApiEngine, self).__init__(actual, config)
         self._api_token = None
@@ -278,31 +294,32 @@ class ModularHttpApiEngine(ModularApiEngineBase):
     def api_token_reset(self):
         raise NotImplementedError
 
+    def _strip_auth(self, headers):
+        if b'Authorization' in headers.keys():
+            rv = copy(headers)
+            rv[b'Authorization'] = rv[b'Authorization'][:10] + b'...'
+            return rv
+        return headers
+
     """ Core HTTP API Executor """
-    def _api_execute(self, ep, request_builder, response_handler,
-                     authenticated=True):
+    def _api_execute(self, ep, request_builder, response_handler):
         url = "{0}/{1}".format(self.api_url, ep)
 
-        if authenticated:
-            d = self.api_token
-            d.addCallback(request_builder)
-
-        else:
-            d = succeed(request_builder())
+        d = request_builder()
 
         def _get_response(req: dict):
             language = req.pop('_language', 'JSON')
             language = language.upper()
             method = req.pop('_method', 'POST')
             method = method.upper()
-            headers = self._api_headers
+            headers = copy(self._api_headers)
             bearer_token = req.pop('_token', None)
             if bearer_token:
                 headers[b'Authorization'] = b'Bearer ' + bearer_token.encode('ascii')
             self.log.debug("Executing {language} API {method} Request to {url} \n"
                            "   with content '{content}'\n"
                            "   and headers '{headers}'", 
-                           url=url, content=req, headers=self._api_headers,
+                           url=url, content=req, headers=self._strip_auth(headers),
                            method=method, language=language)
             params = req.pop('_query', [])
             request_structure = {
@@ -311,12 +328,10 @@ class ModularHttpApiEngine(ModularApiEngineBase):
             }
             request_structure = {k: v for k, v in request_structure.items() if v}
             if method == 'POST':
-                r = self.http_post(url, timeout=120,
-                                   headers=self._api_headers,
+                r = self.http_post(url, timeout=120, headers=headers,
                                    **request_structure)
             elif method == 'GET':
-                r = self.http_get(url, timeout=120,
-                                  headers=self._api_headers,
+                r = self.http_get(url, timeout=120, headers=headers,
                                   **request_structure)
             else:
                 raise ValueError("Method {} not recognized".format(method))
@@ -331,8 +346,9 @@ class ModularHttpApiEngine(ModularApiEngineBase):
             self.log.failure("Attempting to handle API Error for API request to "
                              "endpoint '{endpoint}'", failure=failure, endpoint=ep)
             if isinstance(failure.value, HTTPError) and \
-                    failure.value.response.code == 403:
-                self.log.info("Encountered 403 Error. Attempting API Token Reset.")
+                    failure.value.response.code in [401, 403]:
+                self.log.info(f"Encountered {failure.value.response.code} Error. "
+                              f"Attempting API Token Reset.")
                 self.api_token_reset()
             if not self.api_reconnect_task.running:
                 self.log.debug("Starting API Reconnect Task")
@@ -347,6 +363,13 @@ class ModularHttpApiEngine(ModularApiEngineBase):
             cft = self._api_baseurl.split(':')[1]
             return getattr(self.config, cft)
         return self._api_baseurl
+
+    @property
+    def auth_url(self):
+        if self._auth_url.startswith('config'):
+            cft = self._auth_url.split(':')[1]
+            return getattr(self.config, cft)
+        return self._auth_url
 
     def start(self):
         super(ModularHttpApiEngine, self).start()
