@@ -4,14 +4,59 @@ import os
 import shutil
 import pickle
 import pqueue
+from twisted import logger
 from twisted.internet.defer import succeed
+
+
+class ApiMessageCollector(object):
+    def __init__(self, engine, ep_func, discriminator, bulk_ep_func):
+        self._log = None
+        self._engine = engine
+        self.discriminator = discriminator
+        if self.discriminator:
+            self.container = {}
+        else:
+            self.container = []
+        self.ep_func = ep_func
+        self.bulk_ep_func = bulk_ep_func
+
+    @property
+    def log(self):
+        if not self._log:
+            self._log = logger.Logger(namespace="apimc.{0}".format(self.ep_func), source=self)
+        return self._log
+
+    def add_message(self, **kwargs):
+        if not self.discriminator:
+            self.container.append(kwargs)
+        else:
+            discr = kwargs.pop(self.discriminator)
+            self.container.setdefault(discr, [])
+            self.container[discr].append(kwargs)
+
+    def api_requests(self):
+        self.log.debug("Dispatching Media Reports")
+        if isinstance(self.container, list):
+            return self.container
+        else:
+            for discr, reports in self.container.items():
+                if len(reports):
+                    def when_done():
+                        self.container[discr] = []
+                    self.log.debug("Have '{discr}' reports to dispatch",
+                                   discr=discr)
+                    yield discr, reports, when_done
 
 
 class ApiPersistentActionQueue(object):
     def __init__(self, api_engine, prefix=None):
+        self._collectors = {}
         self._prefix = prefix
         self._api_engine = api_engine
         self._api_queue = None
+
+    def install_collector(self, collector: ApiMessageCollector):
+        self._collectors[collector.ep_func] = collector
 
     def process(self):
         while True:
@@ -37,12 +82,15 @@ class ApiPersistentActionQueue(object):
                 break
         return succeed(True)
 
-    def enqueue_action(self, api_func_name, *args):
-        self._api_engine.log.info(
-            "Enqueuing API action to disk : {func_name}, {args}",
-            func_name=api_func_name, args=args
-        )
-        self.api_queue.put((api_func_name, args))
+    def enqueue_action(self, api_func_name, **kwargs):
+        if api_func_name not in self._collectors.keys():
+            self._api_engine.log.info(
+                "Enqueuing API action to disk : {func_name}, {kwargs}",
+                func_name=api_func_name, kwargs=kwargs
+            )
+            self.api_queue.put((api_func_name, kwargs))
+        else:
+            self._collectors[api_func_name].add_message(**kwargs)
 
     @property
     def api_queue(self):
