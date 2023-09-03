@@ -6,6 +6,7 @@ _requires = [
     'ebs-linuxnode-core>=3.1.5',
     'ebs-linuxnode-sysinfo>=3.1.4',
     'pqueue',
+    'persist-queue'
 ]
 
 setuptools.setup(

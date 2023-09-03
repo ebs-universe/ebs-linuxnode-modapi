@@ -4,21 +4,40 @@ import os
 import shutil
 import pickle
 import pqueue
+from enum import Enum
+from persistqueue import Queue
 from twisted import logger
 from twisted.internet.defer import succeed
 
 
 class ApiMessageCollector(object):
     def __init__(self, engine, ep_func, discriminator, bulk_ep_func):
+        self._api_queue_dir = None
         self._log = None
         self._engine = engine
         self.discriminator = discriminator
-        if self.discriminator:
-            self.container = {}
-        else:
-            self.container = []
+        self.container = {}
         self.ep_func = ep_func
         self.bulk_ep_func = bulk_ep_func
+
+    @property
+    def api_queue_dir(self):
+        return os.path.join(self._api_queue_dir, self.ep_func)
+
+    @api_queue_dir.setter
+    def api_queue_dir(self, value):
+        self._api_queue_dir = value
+
+    def queue(self, discr='default'):
+        if isinstance(discr, Enum):
+            discr = discr.value
+        p = os.path.join(self.api_queue_dir, discr)
+        if not os.path.exists(p):
+            os.makedirs(p)
+        tp = os.path.join(p, 'tmp')
+        if not os.path.exists(tp):
+            os.makedirs(tp)
+        return Queue(path=p, tempdir=tp)
 
     @property
     def log(self):
@@ -26,26 +45,34 @@ class ApiMessageCollector(object):
             self._log = logger.Logger(namespace="apimc.{0}".format(self.ep_func), source=self)
         return self._log
 
+    def declare_descr_values(self, known_descr_values):
+        for descr in known_descr_values:
+            self.get_queue(descr)
+
+    def get_queue(self, discr='default'):
+        if discr not in self.container.keys():
+            self.container[discr] = self.queue(discr)
+        return self.container[discr]
+
     def add_message(self, **kwargs):
         if not self.discriminator:
-            self.container.append(kwargs)
+            discr = 'default'
         else:
             discr = kwargs.pop(self.discriminator)
-            self.container.setdefault(discr, [])
-            self.container[discr].append(kwargs)
+        if isinstance(discr, Enum):
+            discr = discr.value
+        queue = self.get_queue(discr)
+        queue.put(kwargs)
 
     def api_requests(self):
-        self.log.debug("Dispatching Media Reports")
-        if isinstance(self.container, list):
-            return self.container
-        else:
-            for discr, reports in self.container.items():
-                if len(reports):
-                    def when_done():
-                        self.container[discr] = []
-                    self.log.debug("Have '{discr}' reports to dispatch",
-                                   discr=discr)
-                    yield discr, reports, when_done
+        for discr, queue in self.container.items():
+            reports = []
+            while not queue.empty():
+                reports.append(queue.get())
+            if len(reports):
+                self.log.info("Have {l} '{discr}' messages to dispatch",
+                               discr=discr, l=len(reports))
+                yield discr, reports, queue.task_done
 
 
 class ApiPersistentActionQueue(object):
@@ -57,6 +84,7 @@ class ApiPersistentActionQueue(object):
 
     def install_collector(self, collector: ApiMessageCollector):
         self._collectors[collector.ep_func] = collector
+        collector.api_queue_dir = self._api_queue_dir
 
     def process(self):
         while True:
