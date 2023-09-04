@@ -10,8 +10,57 @@ from twisted import logger
 from twisted.internet.defer import succeed
 
 
+class TolerantQueue(object):
+    def __init__(self, name=None, logger=None, **kwargs):
+        self._name = name or 'unspecified'
+        self._logger = logger
+        self._path = kwargs.pop('path')
+        self._tempdir = kwargs.pop('tempdir', None)
+        self._kwargs = kwargs
+        self._create()
+
+    def _create(self):
+        if not os.path.exists(self._path):
+            os.makedirs(self._path)
+        if not os.path.exists(self._tempdir):
+            os.makedirs(self._tempdir)
+        try:
+            self._actual_queue = Queue(path=self._path, tempdir=self._tempdir, **self._kwargs)
+        except pickle.UnpicklingError as e:
+            # info file is truncated
+            if self._logger:
+                self._logger.warn(f"Unpickling error ({e}) opening persisted queue "
+                                  f"{self._name}. Nuking. There may be data loss.")
+            self._reset()
+
+    def _reset(self):
+        self._actual_queue = None
+        if self._path:
+            shutil.rmtree(self._path, ignore_errors=True)
+        if self._tempdir:
+            shutil.rmtree(self._tempdir, ignore_errors=True)
+        self._create()
+
+    def get(self, *args, **kwargs):
+        try:
+            return self._actual_queue.get(*args, **kwargs)
+        except (EOFError, pickle.UnpicklingError) as e:
+            # q00000 like file is truncated or similar
+            if self._logger:
+                self._logger.warn(f"Unpickling error ({e}) reading persisted queue "
+                                  f"{self._name}. Nuking. There may be data loss.")
+            self._reset()
+            return None
+
+    def __getattr__(self, item):
+        return getattr(self._actual_queue, item)
+
+
 class ApiMessageCollector(object):
-    def __init__(self, engine, ep_func, discriminator, bulk_ep_func):
+    def __init__(self, engine, ep_func, discriminator, bulk_ep_func,
+                 persist=True):
+        # TODO Implement for persist=False
+        self._persist = persist
         self._api_queue_dir = None
         self._log = None
         self._engine = engine
@@ -32,12 +81,10 @@ class ApiMessageCollector(object):
         if isinstance(discr, Enum):
             discr = discr.value
         p = os.path.join(self.api_queue_dir, discr)
-        if not os.path.exists(p):
-            os.makedirs(p)
         tp = os.path.join(p, 'tmp')
-        if not os.path.exists(tp):
-            os.makedirs(tp)
-        return Queue(path=p, tempdir=tp)
+        return TolerantQueue(path=p, tempdir=tp,
+                             name=f"{self.ep_func}:{discr}",
+                             logger=self.log)
 
     @property
     def log(self):
@@ -68,7 +115,9 @@ class ApiMessageCollector(object):
         for discr, queue in self.container.items():
             reports = []
             while not queue.empty():
-                reports.append(queue.get())
+                report = queue.get()
+                if report is not None:
+                    reports.append(report)
             if len(reports):
                 self.log.info("Have {l} '{discr}' messages to dispatch",
                                discr=discr, l=len(reports))
