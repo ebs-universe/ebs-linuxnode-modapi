@@ -10,11 +10,15 @@ from .primitives import ApiPersistentActionQueue
 
 
 class ServerReportsNotReady(Exception):
-    pass
+    def __init__(self, msg, data=None):
+        self.msg = msg
+        self.data = data or {}
 
 
 class ConnectionRequirementsNotReady(Exception):
-    pass
+    def __init__(self, msg, data=None):
+        self.msg = msg
+        self.data = data or {}
 
 
 class PrimaryAuthenticationFailure(Exception):
@@ -64,16 +68,6 @@ class ModularApiEngineBase(object):
         else:
             return self._actual.config
 
-    """ Status Indicators """
-    def modapi_signal_internet_link(self, value, prefix):
-        pass
-
-    def modapi_signal_internet_connected(self, value, prefix):
-        pass
-
-    def modapi_signal_api_connected(self, value, prefix):
-        pass
-
     """ API Connection Status Primitives """
     @property
     def api_endpoint_connected(self):
@@ -121,7 +115,16 @@ class ModularApiEngineBase(object):
 
         def _enter_reconnection_cycle(failure):
             self.log.error("Can't connect to {0} API endpoint".format(self._prefix))
-            self.log.failure("Connection Failure : ", failure=failure)
+
+            # TODO Should this be a HTTP API Engine check function or is here fine?
+            if failure.check(ServerReportsNotReady):
+                self._actual.modapi_signal_api_server_not_ready(failure.value, self._prefix)
+            elif failure.check(ConnectionRequirementsNotReady):
+                self._actual.modapi_signal_api_params_not_ready(failure.value, self._prefix)
+                pass
+            else:
+                self.log.failure("Connection Failure : ", failure=failure)
+
             self.api_endpoint_connected = False
             if not self.api_reconnect_task.running:
                 self.api_engine_reconnect()
@@ -154,7 +157,6 @@ class ModularApiEngineBase(object):
             if self.api_reconnect_task.running:
                 return
             else:
-                print("Returning failure ", failure)
                 return failure
 
         d.addCallbacks(

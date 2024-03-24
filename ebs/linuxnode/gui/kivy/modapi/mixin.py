@@ -45,14 +45,14 @@ class ModularApiEngineManagerGuiMixin(BaseIoTNodeGui):
     def _modapi_internet_link_indicator_show(self, duration=5):
         _ = self.modapi_internet_link_indicator
         if not self._api_internet_link_indicator.parent:
-            self.gui_notification_stack.add_widget(self._api_internet_link_indicator)
+            self.gui_notification_row.add_widget(self._api_internet_link_indicator)
             self.gui_notification_update()
         if duration:
             self.reactor.callLater(duration, self._modapi_internet_link_indicator_clear)
 
     def _modapi_internet_link_indicator_clear(self):
         if self._api_internet_link_indicator and self._api_internet_link_indicator.parent:
-            self.gui_notification_stack.remove_widget(self._api_internet_link_indicator)
+            self.gui_notification_row.remove_widget(self._api_internet_link_indicator)
             self.gui_notification_update()
         self._api_internet_link_indicator = None
 
@@ -83,16 +83,15 @@ class ModularApiEngineManagerGuiMixin(BaseIoTNodeGui):
             _root = os.path.abspath(os.path.join(os.path.dirname(__file__)))
             source = os.path.join(_root, 'images', 'no-server.png')
             indicator = ColorBoxLayout(
-                pos_hint={'left': 1}, orientation='vertical', padding=(0, 0, 0, 5),
-                size_hint=(None, None), height=70, width=50, spacing=0,
+                pos_hint={'left': 1}, orientation='horizontal',
+                size_hint=(None, None), height=50, spacing=0,
                 bgcolor=(0xff / 255., 0x00 / 255., 0x00 / 255., 0.3),
             )
             indicator.add_widget(
                 StandardImage(source=source, size_hint=(1, None), height=50)
             )
             indicator.add_widget(
-                SelfScalingLabel(text=prefix,
-                                 size_hint=(1, None), height=15)
+                SelfScalingLabel(text=prefix)
             )
 
             self._api_connection_indicators[prefix] = indicator
@@ -125,3 +124,9 @@ class ModularApiEngineManagerGuiMixin(BaseIoTNodeGui):
         else:
             self._modapi_connection_indicator_clear(prefix)
         self._api_connection_status[prefix] = value
+
+    def modapi_signal_api_params_not_ready(self, error, prefix):
+        self.log.warn(f"{prefix} : {error.msg}")
+
+    def modapi_signal_api_server_not_ready(self, error, prefix):
+        self.log.warn(f"{prefix} : {error.msg}")
