@@ -28,7 +28,7 @@ class ModularApiEngineManagerGuiMixin(BaseIoTNodeGui):
     @property
     def modapi_internet_link_indicator(self):
         if not self._api_internet_link_indicator:
-            params = {'bgcolor': (0xff / 255., 0x00 / 255., 0x00 / 255., 0.3),
+            params = {'bgcolor': (0xff / 255., 0x00 / 255., 0x00 / 255., self.gui_tag_alpha),
                       'color': [1, 1, 1, 1]}
             self._api_internet_link_indicator = ColorLabel(
                 text=self._api_internet_link, size_hint=(None, None),
@@ -64,7 +64,7 @@ class ModularApiEngineManagerGuiMixin(BaseIoTNodeGui):
             self._api_internet_indicator = BleedImage(
                 source=_source, pos_hint={'left': 1},
                 size_hint=(None, None), height=50, width=50,
-                bgcolor=(0xff / 255., 0x00 / 255., 0x00 / 255., 0.3),
+                bgcolor=(0xff / 255., 0x00 / 255., 0x00 / 255., self.gui_tag_alpha),
             )
         return self._api_internet_indicator
 
@@ -85,7 +85,7 @@ class ModularApiEngineManagerGuiMixin(BaseIoTNodeGui):
             indicator = ColorBoxLayout(
                 pos_hint={'left': 1}, orientation='horizontal',
                 size_hint=(None, None), height=50, spacing=0,
-                bgcolor=(0xff / 255., 0x00 / 255., 0x00 / 255., 0.3),
+                bgcolor=(0xff / 255., 0x00 / 255., 0x00 / 255., self.gui_tag_alpha),
             )
             indicator.add_widget(
                 StandardImage(source=source, size_hint=(1, None), height=50)
