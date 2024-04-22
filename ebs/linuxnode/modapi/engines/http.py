@@ -135,9 +135,13 @@ class ModularHttpApiEngine(ModularApiEngineBase):
                            url=url, content=req, headers=self._strip_auth(headers),
                            method=method, language=language)
             params = req.pop('_query', [])
+            files = req.pop('_files', {})
+            for key, fpath in files.items():
+                files[key] = open(fpath, 'rb')
             request_structure = {
                 'json': req,
                 'params': params,
+                'files': files
             }
             request_structure = {k: v for k, v in request_structure.items() if v}
             if method == 'POST':
@@ -148,6 +152,14 @@ class ModularHttpApiEngine(ModularApiEngineBase):
                                   **request_structure)
             else:
                 raise ValueError("Method {} not recognized".format(method))
+
+            def _close_files(*args):
+                for f in files.values():
+                    f.close()
+                return args
+
+            if files:
+                r.addBoth(_close_files)
             if language == 'JSON':
                 r.addCallbacks(
                     self._parse_json_response

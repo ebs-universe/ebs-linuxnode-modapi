@@ -28,10 +28,6 @@ from pika.exchange_type import ExchangeType
 PREFETCH_COUNT = 20
 
 
-class CantDoThis(Exception):
-    pass
-
-
 class PikaProtocol(twisted_connection.TwistedProtocolConnection):
     connected = False
     name = 'amqp.protocol'
@@ -276,3 +272,4 @@ class PikaService(service.MultiService):
         serv.__repr__ = lambda: '<AMQP Connection to %s>' % name
         serv.setName(name)
         serv.setServiceParent(self)
+

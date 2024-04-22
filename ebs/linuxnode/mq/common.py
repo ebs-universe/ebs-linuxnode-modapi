@@ -1,0 +1,4 @@
+
+
+class CantDoThis(Exception):
+    pass
